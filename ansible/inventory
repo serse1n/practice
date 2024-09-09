@@ -1,0 +1,12 @@
+[databases]
+192.168.248.153 ansible_user=db-user ansible_ssh_pass=1234
+192.168.248.152 ansible_user=db-repl-user ansible_ssh_pass=1234
+
+[main]
+192.168.248.153 ansible_user=db-user ansible_ssh_pass=1234
+
+[replica]
+192.168.248.152 ansible_user=db-repl-user ansible_ssh_pass=1234
+
+[bot]
+192.168.248.149 ansible_user=bot-user ansible_ssh_pass=1234

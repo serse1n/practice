@@ -1,0 +1,172 @@
+- name: Create postgresql servers
+  hosts: databases
+  become: true
+  vars_files:
+    - ./group_vars/databases.yml
+    - ./group_vars/all.yml
+
+  pre_tasks:
+    - name: Install packages
+      apt: "name={{ item }} state=latest"
+      with_items:
+        - postgresql
+        - postgresql-contrib
+        - python3-psycopg2
+
+    - name: Change pg_hba
+      postgresql_pg_hba:
+        dest: "{{ pg_hba_path }}"
+        contype: local
+        users: postgres
+        source: localhost
+        databases: all
+        method: trust
+
+    - name: Restart postgresql
+      ansible.builtin.systemd_service:
+        state: restarted
+        name: postgresql
+
+- name: Create replication master
+  hosts: main
+  become: true
+
+  tasks:
+    - name: Create database
+      community.postgresql.postgresql_db:
+        name: "{{ db_name }}"
+
+    - name: Create replication user
+      community.postgresql.postgresql_user:
+        db: "{{ db_name }}"
+        name: "{{ db_repl_user }}"
+        password: "{{ db_repl_password }}"
+        priv: "ALL"
+        role_attr_flags: "SUPERUSER,REPLICATION"
+
+    - name: Edit postgresql.conf
+      ansible.builtin.copy:
+        src: "{{ postgresql_conf_local_path }}"
+        dest: "{{ postgresql_conf_remote_path }}"
+        owner: postgres
+        group: postgres
+        mode: "0644"
+
+    - name: Add replication user to pg_hba
+      postgresql_pg_hba:
+        dest: "{{ pg_hba_path }}"
+        contype: host
+        users: "{{ db_repl_user }}"
+        source: "{{ db_repl_host }}"
+        databases: replication
+        method: scram-sha-256
+
+    - name: Restart postgresql
+      ansible.builtin.systemd_service:
+        state: restarted
+        name: postgresql
+
+    - name: Change permissions for logs
+      ansible.builtin.file:
+        path: "/var/log/postgresql/postgresql-15-main.log"
+        mode: '0777'
+
+- name: Configuring replica host
+  hosts: replica
+  become: true
+
+  tasks:
+    - name: Stop postgresql
+      ansible.builtin.systemd_service:
+        state: stopped
+        name: postgresql
+
+    - name: Remove for backup
+      ansible.builtin.file:
+        path: "{{ postgresql_replication_path }}"
+        state: absent
+
+    - name: Create folder for backup
+      ansible.builtin.file:
+        path: "{{ postgresql_replication_path }}"
+        owner: postgres
+        group: postgres
+        mode: '0750'
+        state: directory
+
+    - name: Execute base backup
+      shell: export PGPASSWORD="{{ replication_user_password }}" && "{{ pg_basebackup_path }}" -R -h "{{ db_host }}" -U "{{ db_repl_user }}" -D "{{ postgresql_replication_path }}" -P
+
+    - name: Change permissions
+      command: find "{{ postgresql_replication_path }}" -exec chown postgres:postgres {} \;
+
+    - name: Start postgresql
+      ansible.builtin.systemd_service:
+        state: started
+        name: postgresql
+
+- name: Configuring bot
+  hosts: bot
+  become: true
+
+  tasks:
+    - name: Install python packages
+      apt: "name={{ item }} state=latest"
+      with_items:
+        - python3-pip
+        - git-all
+        - software-properties-common
+        - virtualenv
+        - python3-venv
+
+    - name: Crete virtualvenv
+      shell: virtualenv /home/"{{ bot_user }}"/venv
+
+    - name: Clone bot from git repository
+      ansible.builtin.git:
+        repo: https://github.com/serse1n/practice.git
+        dest: "/home/bot-user/bot"
+        single_branch: yes
+        version: bot
+        clone: yes
+        update: yes
+        force: yes
+
+    - name: init venv
+      ansible.builtin.pip:
+        virtualenv: "/home/{{ bot_user }}/venv"
+        virtualenv_command: "/home/{{ bot_user }}/venv/bin/python3.11 -m venv"
+        requirements: "/home/{{ bot_user }}/bot/requirements.txt"
+
+    - name: Install requirements
+      command: "/home/{{ bot_user }}/venv/bin/pip-3.11 install -r /home/{{ bot_user }}/bot/requirements.txt"
+
+    - name: Create .env file
+      file:
+        path: "/home/{{ bot_user }}/bot/.env"
+        owner: "{{ bot_user }}"
+        group: "{{ bot_user }}"
+        mode: "666"
+        state: touch
+
+    - name: Create .env file
+      copy:
+        dest: "/home/{{ bot_user }}/bot/.env"
+        content: |
+          TOKEN="{{ token }}"
+          RM_HOST="{{ rm_host }}"
+          RM_PORT="{{ rm_port }}"
+          RM_USER="{{ rm_user }}"
+          RM_PASSWORD="{{ rm_password }}"
+          DB_USER="{{ db_user }}"
+          DB_PASSWORD="{{ db_password }}"
+          DB_HOST="{{ db_host }}"
+          DB_PORT="{{ db_port }}"
+          DB_DATABASE="{{ db_name }}"
+          DB_REPL_USER="{{ db_repl_user }}"
+          DB_REPL_PASSWORD="{{ db_repl_password }}"
+          DB_REPL_HOST="{{ db_repl_host }}"
+          DB_REPL_PORT="{{ db_repl_port }}"
+
+    - name: Change permissions
+      command: find "/home/bot-user/bot" -exec chown "{{ bot_user }}:{{ bot_user }}" {} \;

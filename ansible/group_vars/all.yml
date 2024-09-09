@@ -1,0 +1,25 @@
+db_name: botdb
+replication_user: repl_user
+replication_user_password: "1234"
+
+token: ""
+
+rm_host: 192.168.248.153
+rm_port: 22
+rm_user: db-user
+rm_password: 1234
+
+bot_host: 192.168.248.149
+bot_port: 22
+bot_user: bot-user
+bot_password: 1234
+
+db_host: 192.168.248.153
+db_port: 5432
+db_user: db-user
+db_password: 1234
+
+db_repl_host: 192.168.248.152
+db_repl_port: 5432
+db_repl_user: db-repl-user
+db_repl_password: 1234
