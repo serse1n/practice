@@ -1,5 +1,0 @@
-pg_hba_path: /etc/postgresql/15/main/pg_hba.conf
-postgresql_conf_local_path: ./postgresql.conf
-postgresql_conf_remote_path: /etc/postgresql/15/main/postgresql.conf
-postgresql_replication_path: /var/lib/postgresql/15/main
-pg_basebackup_path: /usr/lib/postgresql/15/bin/pg_basebackup
